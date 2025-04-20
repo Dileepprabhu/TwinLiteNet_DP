@@ -7,7 +7,7 @@ import os
 import torch
 from model import TwinLite as net
 import cv2
-import time  # added import for time measurement
+import time  # added for timing
 
 def Run(model,img):
     img = cv2.resize(img, (640, 360))
@@ -17,12 +17,9 @@ def Run(model,img):
     img = np.ascontiguousarray(img)
     img=torch.from_numpy(img)
     img = torch.unsqueeze(img, 0)  # add a batch dimension
-    img=img.cuda().float() / 255.0
-    img = img.cuda()
-    start_time = time.perf_counter()  # start timing
+    img = img.float() / 255.0
     with torch.no_grad():
         img_out = model(img)
-    inference_time = time.perf_counter() - start_time  # compute inference time
     x0=img_out[0]
     x1=img_out[1]
 
@@ -34,20 +31,22 @@ def Run(model,img):
     img_rs[DA>100]=[255,0,0]
     img_rs[LL>100]=[0,255,0]
     
-    return img_rs, inference_time  # return both result and inference time
+    return img_rs
 
 
 model = net.TwinLiteNet()
 model = torch.nn.DataParallel(model)
-model = model.cuda()
-model.load_state_dict(torch.load('pretrained/best.pth'))
+model.load_state_dict(torch.load('pretrained/best.pth', map_location=torch.device('cpu')))
 model.eval()
 
 image_list=os.listdir('images')
-shutil.rmtree('results')
+if os.path.exists('results'):
+    shutil.rmtree('results')
 os.mkdir('results')
 for i, imgName in enumerate(image_list):
     img = cv2.imread(os.path.join('images',imgName))
-    result, infer_time = Run(model, img)  # unpack result and inference time
-    cv2.imwrite(os.path.join('results',imgName),result)
-    print(f"Inference time for {imgName}: {infer_time:.4f} seconds")
+    start_time = time.time()  # start timer
+    img = Run(model, img)
+    elapsed_time = time.time() - start_time  # end timer and compute elapsed time
+    print(f"Image {imgName}: Inference time = {elapsed_time:.4f} seconds", flush=True)
+    cv2.imwrite(os.path.join('results',imgName), img)
