@@ -10,6 +10,7 @@ import torch
 
 import pandas as pd
 from pathlib import Path
+from collections import OrderedDict  # added import
 
 
 
@@ -124,7 +125,14 @@ def run(
     ):
     model = Net()
     model = model.cuda()
-    model.load_state_dict(torch.load(weights))
+    # Load weights and remove 'module.' prefix if present
+    state_dict = torch.load(weights, map_location=lambda storage, loc: storage)
+    if list(state_dict.keys())[0].startswith('module.'):
+        new_state_dict = OrderedDict()
+        for k, v in state_dict.items():
+            new_state_dict[k.replace("module.", "")] = v
+        state_dict = new_state_dict
+    model.load_state_dict(state_dict)
     device = select_device(device)
 
     include = [x.lower() for x in include]  # to lowercase
@@ -153,14 +161,14 @@ def run(
 def parse_opt(known=False):
     parser = argparse.ArgumentParser()
     parser.add_argument('--weights', type=str,
-                        default='pretrained/model_best.pth', help='model.pt path(s)')
+                        default='pretrained/best.pth', help='model.pt path(s)')
     parser.add_argument('--imgsz', '--img', '--img-size', nargs='+', type=int, default=[360, 640], help='image (h, w)')
     parser.add_argument('--batch-size', type=int, default=1, help='batch size')
     parser.add_argument('--device', default='0', help='cuda device, i.e. 0 or 0,1,2,3 or cpu')
     parser.add_argument(
         '--include',
         nargs='+',
-        default=['engine'],
+        default=['onnx'],  # default changed from ['engine'] to ['onnx']
         help='torchscript, onnx, engine')
     opt = parser.parse_known_args()[0] if known else parser.parse_args()
     return opt
