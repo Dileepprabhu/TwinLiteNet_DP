@@ -450,19 +450,21 @@ class TwinLiteNet(nn.Module):
 
 
 
-    def forward(self, input):
+    def forward(self, input, only_lane=False):
+        x = self.encoder(input)
+        if only_lane:
+            x2 = self.up_1_2(x)
+            x2 = self.up_2_2(x2)
+            classifier2 = self.classifier_2(x2)
+            return classifier2
+        else:
+            x1 = self.up_1_1(x)
+            x1 = self.up_2_1(x1)
+            classifier1 = self.classifier_1(x1)
 
-        x=self.encoder(input)
-        x1=self.up_1_1(x)
-        x1=self.up_2_1(x1)
-        classifier1=self.classifier_1(x1)
-        
-        
-
-        x2=self.up_1_2(x)
-        x2=self.up_2_2(x2)
-        classifier2=self.classifier_2(x2)
-
-        return (classifier1,classifier2)
+            x2 = self.up_1_2(x)
+            x2 = self.up_2_2(x2)
+            classifier2 = self.classifier_2(x2)
+            return (classifier1, classifier2)
 
 

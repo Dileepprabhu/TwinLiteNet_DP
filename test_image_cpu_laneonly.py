@@ -1,45 +1,36 @@
-import argparse
 import torch
-import numpy as np    # changed: corrected numpy import syntax
+import numpy as np
 import shutil
 from tqdm.autonotebook import tqdm
 import os
+import os
+import torch
 from model import TwinLite as net
 import cv2
 import time  # added for timing
+import argparse  # added for argument parsing
 
 def Run(model, img):
-    # Resize input image to expected (640,360)
     img = cv2.resize(img, (640, 360))
     img_rs = img.copy()
 
-    # Preprocess: convert BGR to RGB and rearrange dimensions to CHW.
     img = img[:, :, ::-1].transpose(2, 0, 1)
     img = np.ascontiguousarray(img)
     img = torch.from_numpy(img)
-    img = torch.unsqueeze(img, 0)  # add batch dimension
+    img = torch.unsqueeze(img, 0)  # add a batch dimension
     img = img.float() / 255.0
-
+    # Invoke the model with only_lane=True
     with torch.no_grad():
-        img_out = model(img)
-    x0 = img_out[0]
-    x1 = img_out[1]
-
-    _, da_predict = torch.max(x0, 1)
-    _, ll_predict = torch.max(x1, 1)
-
-    DA = da_predict.byte().cpu().data.numpy()[0] * 255
+        img_out = model(img, only_lane=True)
+    # Process only lane predictions; remove drivable area branch
+    _, ll_predict = torch.max(img_out, 1)
     LL = ll_predict.byte().cpu().data.numpy()[0] * 255
-
-    # Overlay predictions on the original image
-    img_rs[DA > 100] = [255, 0, 0]
-    img_rs[LL > 100] = [0, 255, 0]
-    
+    img_rs[LL > 100] = [0, 0, 255]  # Blue overlay for lane detection
     return img_rs
 
 if __name__ == '__main__':
     # Parse command line arguments
-    parser = argparse.ArgumentParser(description="Run TwinLiteNet inference")
+    parser = argparse.ArgumentParser(description="Run TwinLiteNet lane-only inference")
     parser.add_argument('--data_parallel', action='store_true',
                         help="Wrap the model in DataParallel (useful for multi-core CPUs or GPUs)")
     args = parser.parse_args()
@@ -47,7 +38,7 @@ if __name__ == '__main__':
     # Instantiate model
     model = net.TwinLiteNet()
     
-    # Optionally wrap the model in DataParallel
+    # Optionally wrap model in DataParallel
     if args.data_parallel:
         model = torch.nn.DataParallel(model)
     
@@ -65,15 +56,15 @@ if __name__ == '__main__':
     model.load_state_dict(new_state_dict)
     model.eval()
 
-    # Process images
     image_list = os.listdir('images')
     if os.path.exists('results'):
         shutil.rmtree('results')
     os.mkdir('results')
+
     for i, imgName in enumerate(image_list):
         img = cv2.imread(os.path.join('images', imgName))
         start_time = time.time()  # start timer
         img = Run(model, img)
-        elapsed_time = time.time() - start_time  # compute elapsed time
+        elapsed_time = time.time() - start_time  # end timer and compute elapsed time
         print(f"Image {imgName}: Inference time = {elapsed_time:.4f} seconds", flush=True)
         cv2.imwrite(os.path.join('results', imgName), img)
